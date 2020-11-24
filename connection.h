@@ -18,12 +18,9 @@ signals:
 public slots:
 
 private:
-    QComboBox* cbxPortAmk;
     QComboBox* cbxPortTest;
-    QGroupBox* gbxAmk;
     QGroupBox* gbxTest;
     QGridLayout* gridLayout;
-    QPushButton* pbPingAmk;
     QPushButton* pbPingTest;
     QPushButton* pbUpdateCbxPort;
     QSpacerItem* verticalSpacer;
@@ -34,7 +31,6 @@ private:
     void setupUi(QWidget* Form); // setupUi
     void retranslateUi(QWidget* Form); // retranslateUi
 
-    bool CheckConnectionAmk();
     bool CheckConnectionTest();
 
     void UpdateCbxPort();

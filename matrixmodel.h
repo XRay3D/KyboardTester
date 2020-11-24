@@ -3,22 +3,21 @@
 
 #include <QAbstractTableModel>
 
-class MyTableModel : public QAbstractTableModel {
+#include <hwinterface/amk_tester.h>
+
+class MatrixModel : public QAbstractTableModel {
     Q_OBJECT
 
-    int m_data[11][11];
+    Pins m_data;
 
 public:
-    explicit MyTableModel(QObject* parent = nullptr);
+    explicit MatrixModel(QObject* parent = nullptr);
     enum {
         ColumnCount = 11,
         RowCount = 11,
     };
-
-signals:
-
-public slots:
-    void setData(const QVector<quint16>& value);
+    int isOk();
+    void setDataA(const Pins& value);
 
     // QAbstractItemModel interface
 public:

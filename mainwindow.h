@@ -12,10 +12,13 @@ public:
 
 private slots:
     void on_pbPing_clicked();
+    void on_pushButton_clicked();
+    void on_hslPress_valueChanged(int value);
 
 private:
     void writeSettings();
     void readSettings();
+    void updatePos(const QPointF& pt);
 };
 
 #endif // MAINWINDOW_H

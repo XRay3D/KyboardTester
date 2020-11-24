@@ -1,14 +1,28 @@
 #include "amk_tester.h"
 #include <QDebug>
 
-int id1 = qRegisterMetaType<QVector<quint16>>("QVector<quint16>");
+const int id1 = qRegisterMetaType<QVector<uint16_t>>("QVector<uint16_t>");
+const int id2 = qRegisterMetaType<Pins>("Pins");
 
 AmkTester::AmkTester(QObject* parent)
     : QObject(parent)
-    , m_port(new TesterPort(this))
+    , port(new TesterPort(this))
+    , pinsParcels {
+        parcel(MEASURE_PIN, uint8_t(0x0)),
+        parcel(MEASURE_PIN, uint8_t(0x1)),
+        parcel(MEASURE_PIN, uint8_t(0x2)),
+        parcel(MEASURE_PIN, uint8_t(0x3)),
+        parcel(MEASURE_PIN, uint8_t(0x4)),
+        parcel(MEASURE_PIN, uint8_t(0x5)),
+        parcel(MEASURE_PIN, uint8_t(0x6)),
+        parcel(MEASURE_PIN, uint8_t(0x7)),
+        parcel(MEASURE_PIN, uint8_t(0x8)),
+        parcel(MEASURE_PIN, uint8_t(0x9)),
+        parcel(MEASURE_PIN, uint8_t(0xA)),
+    }
 {
-    m_port->moveToThread(&m_portThread);
-    connect(&m_portThread, &QThread::finished, m_port, &QObject::deleteLater);
+    port->moveToThread(&m_portThread);
+    connect(&m_portThread, &QThread::finished, port, &QObject::deleteLater);
     m_portThread.start(QThread::InheritPriority);
 }
 
@@ -31,13 +45,13 @@ bool AmkTester::Ping(const QString& portName, int baud, int addr)
             break;
 
         if (!portName.isEmpty())
-            m_port->setPortName(portName);
+            port->setPortName(portName);
 
         emit open(QIODevice::ReadWrite);
         if (!m_semaphore.tryAcquire(1, 1000))
             break;
 
-        emit write(parcel(static_cast<quint8>(PING)));
+        emit write(parcel(static_cast<uint8_t>(PING)));
         if (!m_semaphore.tryAcquire(1, 100)) {
             emit close();
             break;
@@ -48,15 +62,19 @@ bool AmkTester::Ping(const QString& portName, int baud, int addr)
     return m_connected;
 }
 
-bool AmkTester::measurePin(int pin)
+bool AmkTester::measure()
 {
     QMutexLocker locker(&m_mutex);
     if (!m_connected)
         return false;
-    reset();
-    emit write(parcel(MEASURE_PIN, static_cast<quint8>(pin)));
-    if (m_semaphore.tryAcquire(1, 1000))
-        m_result = true;
+    m_result = true;
+    m_semaphore.acquire(m_semaphore.available());
+    for (auto& pinsParcel : pinsParcels) {
+        emit write(pinsParcel);
+        m_result &= m_semaphore.tryAcquire(1, 1000);
+        if (!m_result)
+            break;
+    }
     return m_result;
 }
 
@@ -82,42 +100,86 @@ void AmkTester::reset()
     m_semaphore.acquire(m_semaphore.available());
 }
 
-void AmkTester::rxPing(const QByteArray& /*data*/)
-{
-    qDebug() << "rxPing";
-}
+void AmkTester::rxPing(const QByteArray& /*data*/) { qDebug() << "rxPing"; }
 
 void AmkTester::rxMeasurePin(const QByteArray& data)
 {
-    const Parcel_t* d = reinterpret_cast<const Parcel_t*>(data.data());
-    const quint16* p = reinterpret_cast<const quint16*>(d->data);
-    emit measureReady({ p[0], p[1], p[2], p[3], p[4], p[5], p[6], p[7], p[8], p[9], p[10], p[11] });
+    enum { ColumnCount = 11 };
+    static auto setDataS = [this](const QVector<int>& value) {
+        QVector<int> data;
+        const int row = value[ColumnCount];
+        int rez[ColumnCount] { -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1 };
+        int count = 0;
+        for (int column = row - 1, index = row + 1;
+             column > -1 || index < ColumnCount;
+             --column, ++index) {
+
+            float value1 = value[row];
+            if (column > -1 && value[column] > 10) { // 10 this anti-noise
+                float value2 = value[column];
+                ++count;
+                if (value1 > value2)
+                    rez[column] = ((value1 - value2) / value2) * 1000; // 1000 опорное сопротивление
+                else
+                    rez[column] = ((value2 - value1) / value1) * 1000; // 1000 опорное сопротивление
+                data.append(rez[column]);
+                if (rez[row] < 0)
+                    ++rez[row];
+            }
+            if (index < 11 && value[index] > 10) { // 10 this anti-noise
+                float value2 = value[index];
+                ++count;
+                if (value1 > value2)
+                    rez[index] = ((value1 - value2) / value2) * 1000; // 1000 опорное сопротивление
+                else
+                    rez[index] = ((value2 - value1) / value1) * 1000; // 1000 опорное сопротивление
+                data.append(rez[index]);
+                if (rez[row] < 0)
+                    ++rez[row];
+            }
+        }
+
+        for (int column = 0; column < ColumnCount; ++column) {
+            if (count && rez[column] > 0 && column < row) {
+                rez[column] /= count;
+            }
+            m_pins[row][column] = rez[column];
+        }
+    };
+
+    const uint16_t* d = pValue<const uint16_t>(data);
+    for (int i = 0; i < ColumnCount; ++i) {
+        dataMatrix[d[ColumnCount]][i] = d[i];
+    }
+    if (d[ColumnCount] == 10) {
+        for (int i = 0; i < ColumnCount; ++i) {
+            setDataS({ //
+                dataMatrix[i][0],
+                dataMatrix[i][1],
+                dataMatrix[i][2],
+                dataMatrix[i][3],
+                dataMatrix[i][4],
+                dataMatrix[i][5],
+                dataMatrix[i][6],
+                dataMatrix[i][7],
+                dataMatrix[i][8],
+                dataMatrix[i][9],
+                dataMatrix[i][10],
+                i });
+        }
+        emit measureReady(m_pins);
+    }
 }
 
-void AmkTester::rxGetCalibrationCoefficients(const QByteArray& /*data*/)
-{
-    qDebug() << "rxGetCalibrationCoefficients";
-}
+void AmkTester::rxGetCalibrationCoefficients(const QByteArray& /*data*/) { qDebug() << "rxGetCalibrationCoefficients"; }
 
-void AmkTester::rxSetCalibrationCoefficients(const QByteArray& /*data*/)
-{
-    qDebug() << "rxSetCalibrationCoefficients";
-}
+void AmkTester::rxSetCalibrationCoefficients(const QByteArray& /*data*/) { qDebug() << "rxSetCalibrationCoefficients"; }
 
-void AmkTester::rxBufferOverflow(const QByteArray& data)
-{
-    qDebug() << "rxBufferOverflow" << data.toHex().toUpper();
-}
+void AmkTester::rxBufferOverflow(const QByteArray& data) { qDebug() << "rxBufferOverflow" << data.toHex().toUpper(); }
 
-void AmkTester::rxWrongCommand(const QByteArray& data)
-{
-    qDebug() << "rxWrongCommand" << data.toHex().toUpper();
-}
+void AmkTester::rxWrongCommand(const QByteArray& data) { qDebug() << "rxWrongCommand" << data.toHex().toUpper(); }
 
-void AmkTester::rxCrcError(const QByteArray& data)
-{
-    qDebug() << "rxCrcError" << data.toHex().toUpper();
-}
+void AmkTester::rxCrcError(const QByteArray& data) { qDebug() << "rxCrcError" << data.toHex().toUpper(); }
 
 /////////////////////////////////////////
 /// \brief SerialPort::SerialPort
@@ -186,7 +248,7 @@ void TesterPort::readSlot()
     QMutexLocker locker(&m_mutex);
     m_data.append(readAll());
     for (int i = 0; i < m_data.size() - 3; ++i) {
-        const Parcel_t* const d = reinterpret_cast<const Parcel_t*>(m_data.constData() + i);
+        const Parcel* const d = reinterpret_cast<const Parcel*>(m_data.constData() + i);
         if (d->start == RX && d->len <= m_data.size()) {
             QByteArray tmpData = m_data.mid(i, d->len);
             counter += tmpData.size();
@@ -199,17 +261,5 @@ void TesterPort::readSlot()
             m_data.remove(0, i + d->len);
             i = 0;
         }
-        //        if (m_data.at(i) == -86 && m_data.at(i + 1) == 85) {
-        //            if ((i + m_data[i + 2]) <= m_data.size()) {
-        //                m_tmpData = m_data.mid(i, m_data[i + 2]);
-        //                quint8 cmd = *(quint8*)(m_tmpData.constData() + 3);
-        //                if (checkParcel(m_tmpData))
-        //                    (m_t->*m_f[cmd])(m_tmpData);
-        //                else
-        //                    (m_t->*m_f[CRC_ERROR])(m_tmpData);
-        //                m_data.remove(0, i + m_data[i + 2]);
-        //                i = -1;
-        //            }
-        //        }
     }
 }

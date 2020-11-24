@@ -2,29 +2,18 @@
 
 #include <QTimer>
 
-AmkTester* amkTester = nullptr;
-Amk* Kds = nullptr;
-Amk* Hart = nullptr;
-
-QThread thrd;
-QSemaphore semafore;
-
 Interface::Interface()
 {
     if (!semafore.available()) {
-        Hart = new Amk;
-        Hart->moveToThread(&thrd);
+        m_tester = new AmkTester;
+        m_tester->moveToThread(&thread);
+        thread.connect(&thread, &QThread::finished, m_tester, &QObject::deleteLater);
 
-        Kds = new Amk;
-        Kds->moveToThread(&thrd);
+        m_grbl = new GRBL;
+        m_grbl->moveToThread(&thread);
+        thread.connect(&thread, &QThread::finished, m_grbl, &QObject::deleteLater);
 
-        amkTester = new AmkTester;
-        amkTester->moveToThread(&thrd);
-
-        thrd.connect(&thrd, &QThread::finished, Hart, &QObject::deleteLater);
-        thrd.connect(&thrd, &QThread::finished, Kds, &QObject::deleteLater);
-        thrd.connect(&thrd, &QThread::finished, amkTester, &QObject::deleteLater);
-        thrd.start(QThread::NormalPriority);
+        thread.start(QThread::NormalPriority);
     }
     semafore.release();
 }
@@ -33,13 +22,7 @@ Interface::~Interface()
 {
     semafore.acquire();
     if (!semafore.available()) {
-        thrd.quit();
-        thrd.wait();
+        thread.quit();
+        thread.wait();
     }
 }
-
-AmkTester* Interface::tester() { return amkTester; }
-
-Amk* Interface::kds1() { return Kds; }
-
-Amk* Interface::kds2() { return Hart; }

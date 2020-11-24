@@ -8,7 +8,7 @@ int main(int argc, char* argv[])
     QApplication a(argc, argv);
 
     a.setOrganizationName("XrSoft");
-    a.setApplicationName("AmkTester");
+    a.setApplicationName("KyboardTester");
 
     Interface i;
     Q_UNUSED(i)

@@ -1,6 +1,6 @@
 QT += core gui serialport widgets
 
-TARGET = AmkTester
+TARGET = KyboardTester
 TEMPLATE = app
 
 # The following define makes your compiler emit warnings if you use
@@ -16,36 +16,38 @@ DEFINES += QT_DISABLE_DEPRECATED_BEFORE=0x060000    # disables all the APIs depr
 
 win32:RC_FILE = main_icon/myapp.rc
 
+QMAKE_CXXFLAGS += /std:c++latest
+QMAKE_CXXFLAGS += /await
+
 SOURCES += \
-    amk.cpp \
+    buttonmodel.cpp \
     connection.cpp \
+    hwinterface/grbl.cpp \
     hwinterface/amk_tester.cpp \
     hwinterface/interface.cpp \
-    hwinterface/kds.cpp \
     main.cpp \
     mainwindow.cpp \
+    matrixmodel.cpp \
     pointedit.cpp \
-    tester.cpp \
-    mytablemodel.cpp
+    tester.cpp
 
 
 
 
 HEADERS += \
-    amk.h \
+    buttonmodel.h \
     connection.h \
+    hwinterface/grbl.h \
     hwinterface/amk_tester.h \
     hwinterface/common_interfaces.h \
     hwinterface/interface.h \
-    hwinterface/kds.h \
     mainwindow.h \
+    matrixmodel.h \
     pointedit.h \
-    tester.h \
-    mytablemodel.h
+    tester.h
 
 
 FORMS += \
         mainwindow.ui
 
 include(../mp/myprotokol.pri)
-include(../elemer_ascii/elemer_ascii.pri)

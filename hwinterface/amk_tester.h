@@ -20,41 +20,54 @@ enum COMMAND {
     CRC_ERROR
 };
 
+struct Pins {
+    struct Row {
+        int data[16] { -1 };
+        int& operator[](int i) { return data[i]; }
+        const int& operator[](int i) const { return data[i]; }
+    } data[11];
+    Row& operator[](int i) { return data[i]; }
+    const Row& operator[](int i) const { return data[i]; }
+};
+
 class TesterPort;
 
-class AmkTester : public QObject, private MyProtokol, /*private CallBack,*/ public CommonInterfaces {
+class AmkTester : public QObject, private MyProtokol, public CommonInterfaces {
     Q_OBJECT
     friend class TesterPort;
 
 public:
-    AmkTester(QObject* parent = 0);
+    AmkTester(QObject* parent = nullptr);
     ~AmkTester();
 
     bool Ping(const QString& portName = QString(), int baud = 9600, int addr = 0);
 
-    bool measurePin(int pin);
-    bool setDefaultCalibrationCoefficients(quint8 pin);
+    bool measure();
+    bool setDefaultCalibrationCoefficients(uint8_t pin);
     bool getCalibrationCoefficients(float& GradCoeff, int pin);
     bool setCalibrationCoefficients(float& GradCoeff, int pin);
-    bool saveCalibrationCoefficients(quint8 pin);
+    bool saveCalibrationCoefficients(uint8_t pin);
 
 signals:
     void open(int mode);
     void close();
     void write(const QByteArray& data);
-
-    void measureReady(const QVector<quint16>&);
+    void measureReady(const Pins&);
 
 private:
-    bool m_connected = false;
-    bool m_result = false;
-    int m_counter = 0;
-    TesterPort* m_port;
+    TesterPort* port;
     QMutex m_mutex;
     QSemaphore m_semaphore;
     QThread m_portThread;
 
     void reset();
+
+    const QByteArray pinsParcels[11];
+
+    Pins m_pins;
+    bool m_result = false;
+    int m_counter = 0;
+    int dataMatrix[11][11];
 
     void rxPing(const QByteArray& data);
     void rxMeasurePin(const QByteArray& data);
