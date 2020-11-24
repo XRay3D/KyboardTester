@@ -1,6 +1,8 @@
 #pragma once
 
 #include "common_interfaces.h"
+#include <QAnimationGroup>
+#include <QPointF>
 #include <QSemaphore>
 #include <QSerialPort>
 #include <QThread>
@@ -10,13 +12,16 @@ class Port;
 class GRBL : public QObject, public CommonInterfaces {
     Q_OBJECT
 
-signals:
-    void currentPos(const QPointF& pos);
     friend class Port;
 
-    void write(const QByteArray& data);
-    void open();
-    void close();
+#ifdef EMU
+    Q_PROPERTY(QPointF currentPos READ getCurrentPos WRITE setCurrentPos NOTIFY currentPos2)
+    QPointF m_currentPos;
+    QPointF getCurrentPos() const { return m_currentPos; }
+    void setCurrentPos(const QPointF& value) { m_currentPos = value, emit currentPos2(m_currentPos); }
+signals:
+    void currentPos2(const QPointF& pos);
+#endif
 
 public:
     GRBL();
@@ -29,6 +34,12 @@ public:
     bool home();
     QPointF getPos();
     bool isRunning() { return run; }
+
+signals:
+    void currentPos(const QPointF& pos);
+    void write(const QByteArray& data);
+    void open();
+    void close();
 
 private:
     Port* port;

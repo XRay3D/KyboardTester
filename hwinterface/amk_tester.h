@@ -25,7 +25,7 @@ struct Pins {
         int data[16] { -1 };
         int& operator[](int i) { return data[i]; }
         const int& operator[](int i) const { return data[i]; }
-    } data[11];
+    } data[16];
     Row& operator[](int i) { return data[i]; }
     const Row& operator[](int i) const { return data[i]; }
 };
@@ -43,10 +43,10 @@ public:
     bool Ping(const QString& portName = QString(), int baud = 9600, int addr = 0);
 
     bool measure();
-    bool setDefaultCalibrationCoefficients(uint8_t pin);
-    bool getCalibrationCoefficients(float& GradCoeff, int pin);
-    bool setCalibrationCoefficients(float& GradCoeff, int pin);
-    bool saveCalibrationCoefficients(uint8_t pin);
+    //    bool setDefaultCalibrationCoefficients(uint8_t pin);
+    //    bool getCalibrationCoefficients(float& GradCoeff, int pin);
+    //    bool setCalibrationCoefficients(float& GradCoeff, int pin);
+    //    bool saveCalibrationCoefficients(uint8_t pin);
 
 signals:
     void open(int mode);

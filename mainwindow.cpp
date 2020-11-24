@@ -1,30 +1,84 @@
 #include "mainwindow.h"
 #include "buttonmodel.h"
+#include "delegate.h"
 #include "hwinterface/interface.h"
 
 #include <QDebug>
+#include <QFileDialog>
+#include <QInputDialog>
+#include <QItemDelegate>
 #include <QMessageBox>
 #include <QSerialPortInfo>
 #include <QSettings>
-
+#include <ranges>
 //QTabWidget* tw;
 
 MainWindow::MainWindow(QWidget* parent)
     : QMainWindow(parent)
 {
-    setWindowFlag(Qt::WindowStaysOnTopHint);
+    //    setWindowFlag(Qt::WindowStaysOnTopHint);
     setupUi(this);
 
-    for (const QSerialPortInfo& pi : QSerialPortInfo::availablePorts()) {
-        cbxTester->addItem(pi.portName());
-        cbxGrbl->addItem(pi.portName());
+    {
+        auto ports(QSerialPortInfo::availablePorts());
+        std::ranges::sort(ports, [](const QSerialPortInfo& r, const QSerialPortInfo& l) {
+            return r.portName().mid(3).toInt() < l.portName().mid(3).toInt();
+        });
+        for (const QSerialPortInfo& pi : ports) {
+            cbxTester->addItem(pi.portName());
+            cbxGrbl->addItem(pi.portName());
+        }
     }
-    ButtonModel* model;
-    tableViewButtons->setModel(model = new ButtonModel);
-    connect(pbAdd, &QPushButton::clicked, model, &ButtonModel::add);
-    connect(pbSub, &QPushButton::clicked, model, &ButtonModel::sub);
-    connect(pbSave, &QPushButton::clicked, model, &ButtonModel::save);
-    connect(pbOpen, &QPushButton::clicked, model, &ButtonModel::open);
+    {
+        model = new ButtonModel;
+        tableViewButtons->setModel(model);
+
+        auto header = tableViewButtons->horizontalHeader();
+        header->setSectionResizeMode(QHeaderView::Stretch);
+        header = tableViewButtons->verticalHeader();
+        header->setSectionResizeMode(QHeaderView::Fixed);
+        { //setItemDelegate
+            //            tableViewButtons->setItemDelegateForColumn(1, new Delegate(tableViewButtons));
+            tableViewButtons->setItemDelegate(new Delegate(tableViewButtons));
+        }
+
+        connect(pbAdd, &QPushButton::clicked, [this] {
+            QString name = QInputDialog::getText(this,
+                "",
+                "Enter a name for the button.", QLineEdit::Normal,
+                "Name", nullptr);
+            model->addButton(name, { dsbxX->value(), dsbxY->value() });
+        });
+        connect(pbSub, &QPushButton::clicked, [this] {
+            auto mIdxList { tableViewButtons->selectionModel()->selectedIndexes() };
+            if (mIdxList.size()) {
+                std::ranges::sort(mIdxList, [](const QModelIndex& r, const QModelIndex& l) { return r.row() > l.row(); });
+                auto answer = QMessageBox::question(this, "", "Remove Selected Rows?", QMessageBox::Yes, QMessageBox::No);
+                if (answer == QMessageBox::Yes) {
+                    model->removeButtons(mIdxList);
+                }
+            }
+        });
+        connect(pbSave, &QPushButton::clicked, [this] {
+            if (model->fileName().isEmpty())
+                model->save(QFileDialog::getSaveFileName(this, "", "", "*.bin"));
+            else
+                model->save();
+        });
+        connect(pbOpen, &QPushButton::clicked, [this] {
+            if (model->fileName().isEmpty())
+                model->open(QFileDialog::getOpenFileName(this, "", "", "*.bin"));
+            else
+                model->open();
+        });
+    }
+
+    connect(dsbxX, qOverload<double>(&QDoubleSpinBox::valueChanged), [this](double x) {
+        Interface::grbl()->setButton({ x, dsbxY->value() });
+    });
+    connect(dsbxY, qOverload<double>(&QDoubleSpinBox::valueChanged), [this](double y) {
+        Interface::grbl()->setButton({ dsbxX->value(), y });
+    });
 
     //    MatrixModel* mtm = static_cast<MatrixModel*>(widget_2->tableView->model());
 
@@ -98,7 +152,7 @@ void MainWindow::on_pbPing_clicked()
 
 void MainWindow::on_pushButton_clicked()
 {
-    textBrowser->clear();
+    //    textBrowser->clear();
 
     enum {
         R1 = 0,
@@ -165,6 +219,7 @@ void MainWindow::on_pushButton_clicked()
 
     int i = 0;
     for (const auto& [button, pos] : bs) {
+        model->addButton(button, pos);
         if (Interface::grbl()->setButton(pos)) {
             do {
                 Interface::grbl()->getPos();
@@ -180,24 +235,24 @@ void MainWindow::on_pushButton_clicked()
         QApplication::processEvents(QEventLoop::EventLoopExec, 1);
 
         if (int val = widget_2->isOk(); 0 < val && val < 100) {
-            textBrowser->setTextColor(Qt::black);
-            textBrowser->append(button + " = " + QString::number(val) + " ohm");
+            //            textBrowser->setTextColor(Qt::black);
+            //            textBrowser->append(button + " = " + QString::number(val) + " ohm");
             ++i;
         } else {
-            textBrowser->setTextColor(Qt::red);
-            textBrowser->append(button + " = " + QString::number(val) + " ohm");
+            //            textBrowser->setTextColor(Qt::red);
+            //            textBrowser->append(button + " = " + QString::number(val) + " ohm");
             break;
         }
     }
 
     Interface::grbl()->home();
     if (i == bs.size()) {
-        textBrowser->setTextColor(Qt::darkGreen);
-        textBrowser->append("Ok!");
+        //        textBrowser->setTextColor(Qt::darkGreen);
+        //        textBrowser->append("Ok!");
         //        QMessageBox::information(this, "", "Ok!");
     } else {
-        textBrowser->setTextColor(Qt::red);
-        textBrowser->append("Err!");
+        //        textBrowser->setTextColor(Qt::red);
+        //        textBrowser->append("Err!");
         //        QMessageBox::critical(this, "", "Err!");
     }
 }

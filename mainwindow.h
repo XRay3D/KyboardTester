@@ -3,6 +3,8 @@
 
 #include "ui_mainwindow.h"
 
+class ButtonModel;
+
 class MainWindow : public QMainWindow, private Ui::MainWindow {
     Q_OBJECT
 
@@ -19,6 +21,8 @@ private:
     void writeSettings();
     void readSettings();
     void updatePos(const QPointF& pt);
+
+    ButtonModel* model;
 };
 
 #endif // MAINWINDOW_H

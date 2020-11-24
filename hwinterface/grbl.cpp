@@ -3,6 +3,7 @@
 #include <QDateTime>
 #include <QDebug>
 #include <QPointF>
+#include <QPropertyAnimation>
 #include <QTextStream>
 #include <QTimerEvent>
 
@@ -131,6 +132,9 @@ GRBL::~GRBL()
 
 bool GRBL::Ping(const QString& portName, int /*baud*/, int /*addr*/)
 {
+#ifdef EMU
+    return m_connected = true;
+#endif
     m_connected = false;
     semaphore.acquire(semaphore.available());
     do {
@@ -164,6 +168,16 @@ bool GRBL::Ping(const QString& portName, int /*baud*/, int /*addr*/)
 
 bool GRBL::setButton(QPointF pos)
 {
+#ifdef EMU
+    run = true;
+    QPropertyAnimation* animation = new QPropertyAnimation(this, "currentPos");
+    animation->setDuration(500);
+    animation->setStartValue(m_currentPos);
+    animation->setEndValue(pos);
+    animation->start(QAbstractAnimation::DeleteWhenStopped);
+    connect(animation, &QAbstractAnimation::finished, [this] { run = false; });
+    return m_connected = true;
+#endif
     if (!m_connected)
         return false;
     QString str;
@@ -187,6 +201,10 @@ bool GRBL::setButton(QPointF pos)
 
 bool GRBL::setPressure(double val)
 {
+#ifdef EMU
+    return m_connected = true;
+#endif
+
     if (!m_connected)
         return false;
     pressure = val;
@@ -196,6 +214,10 @@ bool GRBL::setPressure(double val)
 
 bool GRBL::home()
 {
+#ifdef EMU
+    return m_connected = true;
+#endif
+
     if (!m_connected)
         return false;
     emit write("G0Z0\r");
@@ -209,6 +231,11 @@ bool GRBL::home()
 
 QPointF GRBL::getPos()
 {
+#ifdef EMU
+    emit currentPos(m_currentPos);
+    return m_currentPos;
+#endif
+
     if (!m_connected)
         return nullPt;
     emit write("?\r");

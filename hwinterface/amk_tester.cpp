@@ -34,6 +34,9 @@ AmkTester::~AmkTester()
 
 bool AmkTester::Ping(const QString& portName, int baud, int addr)
 {
+#ifdef EMU
+    return m_connected = true;
+#endif
     Q_UNUSED(baud)
     Q_UNUSED(addr)
     QMutexLocker locker(&m_mutex);
@@ -64,6 +67,23 @@ bool AmkTester::Ping(const QString& portName, int baud, int addr)
 
 bool AmkTester::measure()
 {
+#ifdef EMU
+
+    thread()->msleep(100);
+    for (int x = 0; x < 11; ++x) {
+        for (int y = 0; y < 11; ++y)
+            m_pins[x][y] = -1;
+    }
+
+    m_pins[0][0] = 50 + rand() % 10; // / float(std::numeric_limits<int>::max() / 2);
+    m_pins[0][10] = 0;
+    m_pins[10][0] = 0;
+    m_pins[10][10] = 50 + rand() % 10; // / float(std::numeric_limits<int>::max() / 2);
+
+    emit measureReady(m_pins);
+
+    return m_connected = true;
+#endif
     QMutexLocker locker(&m_mutex);
     if (!m_connected)
         return false;
@@ -78,21 +98,21 @@ bool AmkTester::measure()
     return m_result;
 }
 
-bool AmkTester::getCalibrationCoefficients(float& /*GradCoeff*/, int /*pin*/)
-{
-    QMutexLocker locker(&m_mutex);
-    if (!m_connected)
-        return false;
-    return (m_result = false);
-}
+//bool AmkTester::getCalibrationCoefficients(float& /*GradCoeff*/, int /*pin*/)
+//{
+//    QMutexLocker locker(&m_mutex);
+//    if (!m_connected)
+//        return false;
+//    return (m_result = false);
+//}
 
-bool AmkTester::setCalibrationCoefficients(float& /*GradCoeff*/, int /*pin*/)
-{
-    QMutexLocker locker(&m_mutex);
-    if (!m_connected)
-        return false;
-    return (m_result = false);
-}
+//bool AmkTester::setCalibrationCoefficients(float& /*GradCoeff*/, int /*pin*/)
+//{
+//    QMutexLocker locker(&m_mutex);
+//    if (!m_connected)
+//        return false;
+//    return (m_result = false);
+//}
 
 void AmkTester::reset()
 {
