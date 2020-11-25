@@ -13,44 +13,41 @@ DEFINES += QT_DEPRECATED_WARNINGS
 # In order to do so, uncomment the following line.
 # You can also select to disable deprecated APIs only up to a certain version of Qt.
 DEFINES += QT_DISABLE_DEPRECATED_BEFORE=0x060000    # disables all the APIs deprecated before Qt 6.0.0
-DEFINES += EMU
+#DEFINES += EMU
 
 #win32:RC_FILE = main_icon/myapp.rc
 
 QMAKE_CXXFLAGS += /std:c++latest
 QMAKE_CXXFLAGS += /await
 
+DESTDIR = $$_PRO_FILE_PWD_/bin
+
 SOURCES += \
     buttonmodel.cpp \
-    connection.cpp \
     delegate.cpp \
+    dialogconnection.cpp \
     hwinterface/grbl.cpp \
     hwinterface/amk_tester.cpp \
     hwinterface/interface.cpp \
     main.cpp \
     mainwindow.cpp \
     matrixmodel.cpp \
-    pointedit.cpp \
-    tester.cpp
-
-
-
+    pointedit.cpp
 
 HEADERS += \
     buttonmodel.h \
-    connection.h \
     delegate.h \
+    dialogconnection.h \
     hwinterface/grbl.h \
     hwinterface/amk_tester.h \
     hwinterface/common_interfaces.h \
     hwinterface/interface.h \
     mainwindow.h \
     matrixmodel.h \
-    pointedit.h \
-    tester.h
-
+    pointedit.h
 
 FORMS += \
+        dialogconnection.ui \
         mainwindow.ui
 
 include(../MyProtokol/myprotokol.pri)

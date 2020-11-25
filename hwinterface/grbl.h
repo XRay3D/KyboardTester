@@ -32,6 +32,7 @@ public:
     bool setButton(QPointF pos);
     bool setPressure(double val);
     bool home();
+    bool zero();
     QPointF getPos();
     bool isRunning() { return run; }
 

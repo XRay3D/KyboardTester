@@ -8,11 +8,11 @@
 #include <QSpinBox>
 #include <QWidget>
 
-class CONNECTION : public QWidget {
+class Connection : public QWidget {
     Q_OBJECT
 public:
-    explicit CONNECTION(QWidget* parent = nullptr);
-    ~CONNECTION();
+    explicit Connection(QWidget* parent = nullptr);
+    ~Connection();
 signals:
 
 public slots:

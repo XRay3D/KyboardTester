@@ -1,6 +1,8 @@
 #include "buttonmodel.h"
 
+#include <QColor>
 #include <QDataStream>
+#include <QDebug>
 #include <QFile>
 
 QDataStream& operator>>(QDataStream& stream, Button& button)
@@ -58,28 +60,40 @@ void ButtonModel::save(const QString& name)
     if (file.open(QFile::WriteOnly)) {
         QDataStream out(&file);
         out << m_data;
+        m_isNew = false;
     }
 }
 
 void ButtonModel::open(const QString& name)
 {
-    if (!name.isEmpty())
-        m_fileName = name;
+    m_fileName = name;
     QFile file(m_fileName);
     if (file.open(QFile::ReadOnly)) {
-        const int size = m_data.size();
-        QDataStream in(&file);
-        in >> m_data;
-        qDebug("%d", m_data.size());
-        //        throw std::exception("Fix it");
-        if (size < m_data.size()) {
-            beginInsertRows({}, 0, m_data.size());
-            endInsertRows();
-        } else {
-            beginRemoveRows({}, 0, 0);
+        if (const int size = m_data.size(); size) {
+            beginRemoveRows({}, 0, size - 1);
             endRemoveRows();
         }
+        QDataStream in(&file);
+        in >> m_data;
+
+        beginInsertRows({}, 0, m_data.size() - 1);
+        endInsertRows();
     }
+}
+
+void ButtonModel::newOrClose()
+{
+    m_isNew = true;
+    m_fileName.clear();
+    beginRemoveRows({}, 0, m_data.size() - 1);
+    m_data.clear();
+    endRemoveRows();
+}
+
+void ButtonModel::setResistance(int index, int resistance)
+{
+    m_data[index].resistance = resistance;
+    dataChanged(createIndex(index, 2), createIndex(index, 2), {});
 }
 
 int ButtonModel::rowCount(const QModelIndex& /*parent*/) const { return m_data.size(); }
@@ -95,7 +109,7 @@ QVariant ButtonModel::data(const QModelIndex& index, int role) const
             return m_data[index.row()].name;
         case 1: {
             QPointF pos(m_data[index.row()].position);
-            return QString("X%1    Y%2").arg(pos.x()).arg(pos.y());
+            return QString("XY(  %1  ,  %2  )").arg(pos.x()).arg(pos.y());
         }
         case 2:
             return m_data[index.row()].resistance;
@@ -109,6 +123,14 @@ QVariant ButtonModel::data(const QModelIndex& index, int role) const
         case 2:
             return m_data[index.row()].resistance;
         }
+    case Qt::TextColorRole:
+        if (index.column() == 2) {
+            return (m_data[index.row()].resistance > 100 || m_data[index.row()].resistance < 1)
+                ? QColor(Qt::red)
+                : QColor(Qt::darkGreen);
+        }
+        return {};
+
     case Qt::TextAlignmentRole:
         return Qt::AlignCenter;
     }
@@ -131,11 +153,21 @@ bool ButtonModel::setData(const QModelIndex& index, const QVariant& value, int r
             return true;
         }
     }
-    return {};
+    return false;
 }
 
 QVariant ButtonModel::headerData(int section, Qt::Orientation orientation, int role) const
 {
+    if (orientation == Qt::Horizontal && role == Qt::DisplayRole) {
+        switch (section) {
+        case 0:
+            return "Имя";
+        case 1:
+            return "Позиция";
+        case 2:
+            return "Сопротивление";
+        }
+    }
     return QAbstractTableModel::headerData(section, orientation, role);
 }
 

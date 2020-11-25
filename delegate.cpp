@@ -45,7 +45,7 @@ QWidget* Delegate::createEditor(QWidget* parent, const QStyleOptionViewItem& opt
 void Delegate::setEditorData(QWidget* editor, const QModelIndex& index) const
 {
     if (index.column() == Pos) {
-        QPointF pt { index.data().toPointF() };
+        QPointF pt { index.data(Qt::EditRole).toPointF() };
         auto widget = static_cast<Widget*>(editor);
         widget->dsbX->setValue(pt.x());
         widget->dsbY->setValue(pt.x());

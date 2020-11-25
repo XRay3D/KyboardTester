@@ -58,6 +58,7 @@ class Port : public QSerialPort {
     {
         data.append(readLine().trimmed());
         if (data.endsWith("ok") || data.endsWith("Grbl 1.1f ['$' for help]")) {
+            qDebug() << data;
             grbl->ret = data;
             data.clear();
             grbl->semaphore.release();
@@ -150,7 +151,7 @@ bool GRBL::Ping(const QString& portName, int /*baud*/, int /*addr*/)
 
         {
             emit write(QByteArray(1, 0x18));
-            if (!isSuccess())
+            if (!isSuccess(2000))
                 break;
             if (!ret.contains("Grbl 1.1f ['$' for help]"))
                 break;
@@ -171,7 +172,7 @@ bool GRBL::setButton(QPointF pos)
 #ifdef EMU
     run = true;
     QPropertyAnimation* animation = new QPropertyAnimation(this, "currentPos");
-    animation->setDuration(500);
+    animation->setDuration(100);
     animation->setStartValue(m_currentPos);
     animation->setEndValue(pos);
     animation->start(QAbstractAnimation::DeleteWhenStopped);
@@ -186,7 +187,7 @@ bool GRBL::setButton(QPointF pos)
         //        if (!wr(str))
         //            break;
 
-        str = QString("G1Z%1\r").arg(-pressure);
+        str = QString("G1Z%1F2000\r").arg(-pressure);
         emit write(str.toLocal8Bit());
         if (!isSuccess())
             break;
@@ -208,7 +209,7 @@ bool GRBL::setPressure(double val)
     if (!m_connected)
         return false;
     pressure = val;
-    emit write(QString("G1Z%1F3000\r").arg(-pressure).toLocal8Bit());
+    emit write(QString("G1Z%1F2000\r").arg(-pressure).toLocal8Bit());
     return isSuccess();
 }
 
@@ -227,6 +228,12 @@ bool GRBL::home()
     }
 
     return false;
+}
+
+bool GRBL::zero()
+{
+    emit write("G92X0Y0\r");
+    return isSuccess();
 }
 
 QPointF GRBL::getPos()

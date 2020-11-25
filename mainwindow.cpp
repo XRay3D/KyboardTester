@@ -1,7 +1,9 @@
 #include "mainwindow.h"
 #include "buttonmodel.h"
 #include "delegate.h"
+#include "dialogconnection.h"
 #include "hwinterface/interface.h"
+#include "matrixmodel.h"
 
 #include <QDebug>
 #include <QFileDialog>
@@ -10,28 +12,56 @@
 #include <QMessageBox>
 #include <QSerialPortInfo>
 #include <QSettings>
+#include <algorithm>
 #include <ranges>
-//QTabWidget* tw;
+
+enum {
+    TesretTimeout = 100,
+    DelayMs = 50
+};
 
 MainWindow::MainWindow(QWidget* parent)
     : QMainWindow(parent)
+    , connection(new DialogConnection(this))
 {
     //    setWindowFlag(Qt::WindowStaysOnTopHint);
     setupUi(this);
 
-    {
-        auto ports(QSerialPortInfo::availablePorts());
-        std::ranges::sort(ports, [](const QSerialPortInfo& r, const QSerialPortInfo& l) {
-            return r.portName().mid(3).toInt() < l.portName().mid(3).toInt();
-        });
-        for (const QSerialPortInfo& pi : ports) {
-            cbxTester->addItem(pi.portName());
-            cbxGrbl->addItem(pi.portName());
+    connect(connection, &DialogConnection::connection, [this](int ok) {
+        switch (ok) {
+        case 0:
+            killTimer(tesretTimerId);
+            tesretTimerId = 0;
+            pbTest->setEnabled(false);
+            break;
+        case DialogConnection::T:
+            tesretTimerId = startTimer(TesretTimeout);
+            tesretSemaphore.acquire(tesretSemaphore.available());
+            break;
+        case DialogConnection::G:
+            pbTest->setEnabled(true);
+            break;
+        case DialogConnection::T | DialogConnection::G:
+            tesretTimerId = startTimer(TesretTimeout);
+            tesretSemaphore.acquire(tesretSemaphore.available());
+            pbTest->setEnabled(true);
+            break;
         }
+    });
+
+    { // tableViewTester
+        modelMatrix = new MatrixModel;
+        tableViewTester->setModel(modelMatrix);
+        auto header = tableViewTester->horizontalHeader();
+        header->setSectionResizeMode(QHeaderView::Stretch);
+        header = tableViewTester->verticalHeader();
+        header->setSectionResizeMode(QHeaderView::Stretch);
+        connect(this, &MainWindow::startTester, Interface::tester(), &AmkTester::measure);
+        connect(Interface::tester(), &AmkTester::measureReady, this, &MainWindow::setData);
     }
-    {
-        model = new ButtonModel;
-        tableViewButtons->setModel(model);
+    { // tableViewButtons
+        modelButton = new ButtonModel;
+        tableViewButtons->setModel(modelButton);
 
         auto header = tableViewButtons->horizontalHeader();
         header->setSectionResizeMode(QHeaderView::Stretch);
@@ -41,55 +71,55 @@ MainWindow::MainWindow(QWidget* parent)
             //            tableViewButtons->setItemDelegateForColumn(1, new Delegate(tableViewButtons));
             tableViewButtons->setItemDelegate(new Delegate(tableViewButtons));
         }
+    }
 
-        connect(pbAdd, &QPushButton::clicked, [this] {
-            QString name = QInputDialog::getText(this,
-                "",
-                "Enter a name for the button.", QLineEdit::Normal,
-                "Name", nullptr);
-            model->addButton(name, { dsbxX->value(), dsbxY->value() });
+    { // menu
+        // Новый
+        auto action = menu->addAction(QIcon::fromTheme(""), "Новый", [this] { modelButton->newOrClose(); });
+        action->setShortcut(QKeySequence::New);
+        // Открыть
+        action = menu->addAction(QIcon::fromTheme(""), "Открыть", [this] {
+            modelButton->open(QFileDialog::getOpenFileName(this, "Open File", modelButton->fileName(), filter));
         });
-        connect(pbSub, &QPushButton::clicked, [this] {
-            auto mIdxList { tableViewButtons->selectionModel()->selectedIndexes() };
-            if (mIdxList.size()) {
-                std::ranges::sort(mIdxList, [](const QModelIndex& r, const QModelIndex& l) { return r.row() > l.row(); });
-                auto answer = QMessageBox::question(this, "", "Remove Selected Rows?", QMessageBox::Yes, QMessageBox::No);
-                if (answer == QMessageBox::Yes) {
-                    model->removeButtons(mIdxList);
-                }
-            }
+        action->setShortcut(QKeySequence::Open);
+        // Сохранить
+        action = menu->addAction(QIcon::fromTheme(""), "Сохранить", [this] {
+            modelButton->fileName().isEmpty()
+                ? modelButton->save(QFileDialog::getSaveFileName(this, "Save File", "", filter))
+                : modelButton->save();
         });
-        connect(pbSave, &QPushButton::clicked, [this] {
-            if (model->fileName().isEmpty())
-                model->save(QFileDialog::getSaveFileName(this, "", "", "*.bin"));
-            else
-                model->save();
+        action->setShortcut(QKeySequence::Save);
+        // Сохранить как
+        action = menu->addAction(QIcon::fromTheme(""), "Сохранить как...", [this] {
+            modelButton->save(QFileDialog::getSaveFileName(this, "Save File As", modelButton->fileName(), filter));
         });
-        connect(pbOpen, &QPushButton::clicked, [this] {
-            if (model->fileName().isEmpty())
-                model->open(QFileDialog::getOpenFileName(this, "", "", "*.bin"));
-            else
-                model->open();
-        });
+        action->setShortcut(QKeySequence::SaveAs);
+        // Закрыть
+        action = menu->addAction(QIcon::fromTheme(""), "Закрыть", [this] { modelButton->newOrClose(); });
+        action->setShortcut(QKeySequence::Close);
+        // Выход
+        action = menu->addAction(QIcon::fromTheme(""), "Выход", [this] { close(); });
     }
 
     connect(dsbxX, qOverload<double>(&QDoubleSpinBox::valueChanged), [this](double x) {
-        Interface::grbl()->setButton({ x, dsbxY->value() });
+        if (chbxMove->isChecked())
+            Interface::grbl()->setButton({ x, dsbxY->value() });
     });
     connect(dsbxY, qOverload<double>(&QDoubleSpinBox::valueChanged), [this](double y) {
-        Interface::grbl()->setButton({ dsbxX->value(), y });
+        if (chbxMove->isChecked())
+            Interface::grbl()->setButton({ dsbxX->value(), y });
     });
-
-    //    MatrixModel* mtm = static_cast<MatrixModel*>(widget_2->tableView->model());
 
     connect(Interface::grbl(), &GRBL::currentPos, this, &MainWindow::updatePos);
 
     readSettings();
-    on_pbPing_clicked();
+    if (!connection->ping())
+        connection->show();
 }
 
 MainWindow::~MainWindow()
 {
+    killTimer(tesretTimerId);
     writeSettings();
 }
 
@@ -101,9 +131,10 @@ void MainWindow::writeSettings()
     settings.setValue("geometry", saveGeometry());
     settings.setValue("state", saveState());
     settings.setValue("splitter", splitter->saveState());
-    settings.setValue("cbxTester", cbxTester->currentIndex());
-    settings.setValue("cbxGrbl", cbxGrbl->currentIndex());
+    settings.setValue("cbxTester", connection->cbxTester->currentIndex());
+    settings.setValue("cbxGrbl", connection->cbxGrbl->currentIndex());
     settings.setValue("hslPress", hslPress->value());
+    settings.setValue("fileName", modelButton->fileName());
     settings.endGroup();
 }
 
@@ -114,9 +145,11 @@ void MainWindow::readSettings()
     restoreGeometry(settings.value("geometry").toByteArray());
     restoreState(settings.value("state").toByteArray());
     splitter->restoreState(settings.value("splitter").toByteArray());
-    cbxTester->setCurrentIndex(settings.value("cbxTester").toInt());
-    cbxGrbl->setCurrentIndex(settings.value("cbxGrbl").toInt());
+    connection->cbxTester->setCurrentIndex(settings.value("cbxTester").toInt());
+    connection->cbxGrbl->setCurrentIndex(settings.value("cbxGrbl").toInt());
     hslPress->setValue(settings.value("hslPress").toInt());
+    modelButton->open(settings.value("fileName").toString());
+
     settings.endGroup();
 }
 
@@ -126,138 +159,146 @@ void MainWindow::updatePos(const QPointF& pt)
     dsbxY->setValue(pt.y());
 }
 
-void MainWindow::on_pbPing_clicked()
+void MainWindow::setPos(double)
 {
-    QString str;
-
-    pushButton->setEnabled(false);
-
-    if (Interface::tester()->Ping(cbxTester->currentText())) {
-        if (Interface::grbl()->Ping(cbxGrbl->currentText())) {
-            widget_2->s.release();
-            widget_2->timer.start(10);
-            pushButton->setEnabled(true);
-        } else {
-            widget_2->timer.stop();
-            str += "Grbl!\n";
-        }
-    } else {
-        widget_2->timer.stop();
-        str += "Tester!\n";
-    }
-
-    if (!str.isEmpty())
-        QMessageBox::critical(this, "", str);
 }
 
-void MainWindow::on_pushButton_clicked()
+void MainWindow::setMode(bool measure)
 {
-    //    textBrowser->clear();
+    chbxMove->setChecked(false);
+    chbxMove->setEnabled(!measure);
 
-    enum {
-        R1 = 0,
-        R2 = 20,
-        R3 = 42,
-        R1_2 = 13,
-        R2_3 = 38,
+    pbAdd->setEnabled(!measure);
+    pbSub->setEnabled(!measure);
+    pbSetPos->setEnabled(!measure);
 
-        C1 = 0,
-        C2 = 21,
-        C3 = 29,
-        C4 = 38,
-        C5 = 60,
-        C6 = 74,
-        C7 = 88,
-        C8 = 102,
-        C9 = 124,
-        DelayMs = 50,
-    };
-    QVector<QPair<QString, QPointF>>
-        bs {
-            { "ENTER", QPointF(C1, R1) }, //enter
-            { "CE", QPointF(C1, R2) }, //ce
-            { "BACK", QPointF(C1, R3) }, //back
+    pbTest->setText(measure ? "Прервать тест" : "Начать тест");
+    pbTest->setChecked(measure);
+}
 
-            { "FIXED STEPS", QPointF(C2, R2_3) }, //fix ste
-            { "PROGR", QPointF(C4, R2_3) }, //progr
-            { "FAST SLOW", QPointF(C3, R1_2) }, //fs
-            { "DOWN", QPointF(C2, R1) }, //slow
-            { "UP", QPointF(C4, R1) }, //fst
-
-            { "-", QPointF(C5, R2) }, //-
-            { "0", QPointF(C5, R3) }, //0
-            { "7", QPointF(C6, R3) }, //7
-            { "4", QPointF(C7, R3) }, //4
-            { "1", QPointF(C8, R3) }, //1
-            { "2", QPointF(C8, R2) }, //2
-            { "5", QPointF(C7, R2) }, //5
-            { "8", QPointF(C6, R2) }, //8
-            { "9", QPointF(C6, R1) }, //9
-            { "6", QPointF(C7, R1) }, //6
-            { "3", QPointF(C8, R1) }, //3
-
-            { "REC", QPointF(C9, R1) }, //rec
-            { "LIGHT", QPointF(C9, R2) }, //light
-        };
-
-    struct TH {
-        QTimer* timer;
-        TH(QTimer* timer)
-            : timer(timer)
-        {
-            qDebug(__FUNCTION__);
-            timer->stop();
-        }
-        ~TH()
-        {
-            qDebug(__FUNCTION__);
-            timer->start(10);
-        }
-    } th(&widget_2->timer);
-
-    Interface::grbl()->setPressure(hslPress->value() * 0.1);
-
-    int i = 0;
-    for (const auto& [button, pos] : bs) {
-        model->addButton(button, pos);
-        if (Interface::grbl()->setButton(pos)) {
-            do {
-                Interface::grbl()->getPos();
-                thread()->msleep(DelayMs);
-                QApplication::processEvents();
-            } while (Interface::grbl()->isRunning());
-        } else {
-            qDebug("setButton!");
-            break;
-        }
-
-        Interface::tester()->measure();
-        QApplication::processEvents(QEventLoop::EventLoopExec, 1);
-
-        if (int val = widget_2->isOk(); 0 < val && val < 100) {
-            //            textBrowser->setTextColor(Qt::black);
-            //            textBrowser->append(button + " = " + QString::number(val) + " ohm");
-            ++i;
-        } else {
-            //            textBrowser->setTextColor(Qt::red);
-            //            textBrowser->append(button + " = " + QString::number(val) + " ohm");
-            break;
-        }
-    }
-
-    Interface::grbl()->home();
-    if (i == bs.size()) {
-        //        textBrowser->setTextColor(Qt::darkGreen);
-        //        textBrowser->append("Ok!");
-        //        QMessageBox::information(this, "", "Ok!");
-    } else {
-        //        textBrowser->setTextColor(Qt::red);
-        //        textBrowser->append("Err!");
-        //        QMessageBox::critical(this, "", "Err!");
-    }
+void MainWindow::setData(const Pins& value)
+{
+    modelMatrix->setDataA(value);
+    tesretSemaphore.acquire(tesretSemaphore.available());
 }
 
 void MainWindow::on_hslPress_valueChanged(int value)
 {
     Interface::grbl()->setPressure(value * 0.1);
+}
+
+void MainWindow::on_pbTest_clicked(bool checked)
+{
+    setMode(checked);
+    if (checked) {
+        class TH {
+            // clang-format off
+            MainWindow* const mw;
+        public:
+            TH(MainWindow* mw) : mw(mw) {
+                mw->killTimer(mw->tesretTimerId);
+                mw->tesretTimerId = 0;
+            }
+            ~TH() {
+                mw->tesretSemaphore.acquire(mw->tesretSemaphore.available());
+                mw->tesretTimerId = mw->startTimer(TesretTimeout);
+            }
+            // clang-format on
+        } th(this);
+
+        Interface::grbl()->setPressure(hslPress->value() * 0.1);
+        int index = 0;
+        for (const auto& [button, pos, res] : modelButton->buttons()) {
+            tableViewButtons->selectionModel()->clearSelection();
+            tableViewButtons->selectRow(index);
+            if (!pbTest->isChecked()) {
+                Interface::grbl()->home();
+                return;
+            }
+            if (Interface::grbl()->setButton(pos)) {
+                do {
+                    Interface::grbl()->getPos();
+                    thread()->msleep(DelayMs);
+                    QApplication::processEvents();
+                } while (Interface::grbl()->isRunning());
+            } else {
+                qDebug("setButton!");
+                break;
+            }
+
+            Interface::tester()->measure();
+            QApplication::processEvents(QEventLoop::EventLoopExec, 1);
+
+            int val = modelMatrix->isOk();
+            modelButton->setResistance(index++, val);
+        }
+        Interface::grbl()->home();
+        setMode(false);
+        QMessageBox::information(this, "", "Проверка закончена.");
+    }
+}
+
+void MainWindow::timerEvent(QTimerEvent* event)
+{
+    if (event->timerId() == tesretTimerId) {
+        if (!tesretSemaphore.available()) {
+            emit startTester();
+            tesretSemaphore.release();
+        }
+    }
+}
+
+void MainWindow::on_pbAdd_clicked()
+{
+    QString name = QInputDialog::getText(this,
+        "",
+        "Enter a name for the button.", QLineEdit::Normal,
+        "Name", nullptr);
+    modelButton->addButton(name, { dsbxX->value(), dsbxY->value() });
+}
+
+void MainWindow::on_pbSub_clicked()
+{
+    auto mIdxList { tableViewButtons->selectionModel()->selectedIndexes() };
+    if (mIdxList.size()) {
+        //std::ranges::sort(mIdxList, [](const QModelIndex& r, const QModelIndex& l) { return r.row() > l.row(); });
+        std::sort(mIdxList.begin(), mIdxList.end(), [](const QModelIndex& r, const QModelIndex& l) { return r.row() > l.row(); });
+        auto answer = QMessageBox::question(this, "", "Remove Selected Rows?", QMessageBox::Yes, QMessageBox::No);
+        if (answer == QMessageBox::Yes) {
+            modelButton->removeButtons(mIdxList);
+        }
+    }
+}
+
+void MainWindow::on_pbSetPos_clicked()
+{
+    auto mIdxList { tableViewButtons->selectionModel()->selectedIndexes() };
+    enum Flags {
+        N,
+        X,
+        Y
+    };
+    int flag = (chbxX->isChecked() ? X : N) | (chbxY->isChecked() ? Y : N);
+    if (flag != N) {
+        for (auto& index : mIdxList) {
+            if (index.column() == 1) {
+                auto pos(index.data(Qt::EditRole).toPointF());
+                if (flag == X)
+                    modelButton->setData(index, QPoint(dsbxX->value(), pos.y()));
+                else if (flag == Y)
+                    modelButton->setData(index, QPoint(pos.x(), dsbxY->value()));
+                else if (flag == (X | Y))
+                    modelButton->setData(index, QPoint(dsbxX->value(), dsbxY->value()));
+            }
+            emit modelButton->dataChanged(index, index);
+        }
+    }
+}
+
+void MainWindow::on_pbZero_clicked()
+{
+    Interface::grbl()->zero();
+    chbxMove->setChecked(false);
+    dsbxX->setValue(0);
+    dsbxY->setValue(0);
 }

@@ -6,24 +6,24 @@
 
 extern QTabWidget* tw;
 
-CONNECTION::CONNECTION(QWidget* parent)
+Connection::Connection(QWidget* parent)
     : QWidget(parent)
 {
     setupUi(this);
     UpdateCbxPort();
-    connect(pbUpdateCbxPort, &QPushButton::clicked, this, &CONNECTION::UpdateCbxPort);
+    connect(pbUpdateCbxPort, &QPushButton::clicked, this, &Connection::UpdateCbxPort);
     QSettings settings;
     cbxPortTest->setCurrentIndex(settings.value("cbxPortTest", 0).toInt());
     QTimer::singleShot(100, Qt::CoarseTimer, [=]() { CheckConnection(); });
 }
 
-CONNECTION::~CONNECTION()
+Connection::~Connection()
 {
     QSettings settings;
     settings.setValue("cbxPortTest", cbxPortTest->currentIndex());
 }
 
-void CONNECTION::setupUi(QWidget* Form)
+void Connection::setupUi(QWidget* Form)
 {
     if (Form->objectName().isEmpty())
         Form->setObjectName(QStringLiteral("Form"));
@@ -51,7 +51,7 @@ void CONNECTION::setupUi(QWidget* Form)
 
     pbPingTest = new QPushButton(gbxTest);
     pbPingTest->setObjectName(QStringLiteral("pbPingTest"));
-    connect(pbPingTest, &QPushButton::clicked, this, &CONNECTION::CheckConnectionTest);
+    connect(pbPingTest, &QPushButton::clicked, this, &Connection::CheckConnectionTest);
 
     pbUpdateCbxPort = new QPushButton(gbxTest);
     pbUpdateCbxPort->setObjectName(QStringLiteral("pbUpdateTestPort"));
@@ -72,7 +72,7 @@ void CONNECTION::setupUi(QWidget* Form)
     //    QMetaObject::connectSlotsByName(Form);
 }
 
-void CONNECTION::retranslateUi(QWidget* Form)
+void Connection::retranslateUi(QWidget* Form)
 {
     Form->setWindowTitle("Form");
 
@@ -81,7 +81,7 @@ void CONNECTION::retranslateUi(QWidget* Form)
     pbUpdateCbxPort->setText("pbUpdateTestPort");
 }
 
-void CONNECTION::UpdateCbxPort()
+void Connection::UpdateCbxPort()
 {
 
     cbxPortTest->clear();
@@ -92,20 +92,20 @@ void CONNECTION::UpdateCbxPort()
     qDebug() << parent();
 }
 
-void CONNECTION::CheckConnection()
+void Connection::CheckConnection()
 {
     if (CheckConnectionTest()) {
     }
 }
 
-bool CONNECTION::CheckConnectionTest()
+bool Connection::CheckConnectionTest()
 {
     if (!Interface::tester()->Ping(cbxPortTest->currentText()))
         QMessageBox::warning(0, "tester", "tester");
     return Interface::tester()->IsConnected();
 }
 
-void CONNECTION::showEvent(QShowEvent* event)
+void Connection::showEvent(QShowEvent* /*event*/)
 {
     //    static int i = 0;
     //    if (!i) {

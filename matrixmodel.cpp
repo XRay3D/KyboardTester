@@ -10,17 +10,21 @@ MatrixModel::MatrixModel(QObject* parent)
 
 int MatrixModel::isOk()
 {
-    QVector<int> d;
-    d.reserve(11 * 11);
+    QVector<int> res;
+    res.reserve(11 * 11);
     for (int r = 0; r < 11; ++r) {
         for (int c = 0; c < 11; ++c) {
             if (m_data[r][c] > 0)
-                d << m_data[r][c];
+                res << m_data[r][c];
         }
     }
-    std::ranges::sort(d);
+    std::ranges::sort(res);
     //    qDebug() << d;
-    return d.size() == 2 ? d.first() : 0;
+    return res.size() == 2
+        ? res.first()
+        : (res.size() > 2
+                ? -1
+                : 0);
 }
 
 void MatrixModel::setDataA(const Pins& value)
