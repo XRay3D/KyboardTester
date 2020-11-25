@@ -47,3 +47,4 @@ bool DialogConnection::ping()
     }
     return str.isEmpty();
 }
+

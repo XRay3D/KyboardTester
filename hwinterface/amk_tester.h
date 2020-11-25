@@ -43,6 +43,8 @@ public:
     bool Ping(const QString& portName = QString(), int baud = 9600, int addr = 0);
 
     bool measure();
+
+    int resistance();
     //    bool setDefaultCalibrationCoefficients(uint8_t pin);
     //    bool getCalibrationCoefficients(float& GradCoeff, int pin);
     //    bool setCalibrationCoefficients(float& GradCoeff, int pin);

@@ -16,7 +16,6 @@ public:
         ColumnCount = 11,
         RowCount = 11,
     };
-    int isOk();
     void setDataA(const Pins& value);
 
     // QAbstractItemModel interface

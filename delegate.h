@@ -20,6 +20,9 @@ struct Widget : public QWidget {
 
 class Delegate : public QItemDelegate {
     //    Q_OBJECT
+
+    void commitEditor();
+
 public:
     Delegate(QWidget* parent);
     virtual ~Delegate();

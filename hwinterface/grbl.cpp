@@ -172,11 +172,13 @@ bool GRBL::setButton(QPointF pos)
 #ifdef EMU
     run = true;
     QPropertyAnimation* animation = new QPropertyAnimation(this, "currentPos");
+    animation->moveToThread(thread());
     animation->setDuration(100);
     animation->setStartValue(m_currentPos);
-    animation->setEndValue(pos);
+    animation->setEndValue(pos + QPointF { 1, 1 });
     animation->start(QAbstractAnimation::DeleteWhenStopped);
     connect(animation, &QAbstractAnimation::finished, [this] { run = false; });
+    connect(animation, &QVariantAnimation::valueChanged, [](const QVariant& value) { qDebug() << value; });
     return m_connected = true;
 #endif
     if (!m_connected)

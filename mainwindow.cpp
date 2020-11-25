@@ -4,6 +4,7 @@
 #include "dialogconnection.h"
 #include "hwinterface/interface.h"
 #include "matrixmodel.h"
+#include "worker.h"
 
 #include <QDebug>
 #include <QFileDialog>
@@ -16,8 +17,7 @@
 #include <ranges>
 
 enum {
-    TesretTimeout = 100,
-    DelayMs = 50
+    TesterTimeout = 100,
 };
 
 MainWindow::MainWindow(QWidget* parent)
@@ -27,79 +27,40 @@ MainWindow::MainWindow(QWidget* parent)
     //    setWindowFlag(Qt::WindowStaysOnTopHint);
     setupUi(this);
 
-    connect(connection, &DialogConnection::connection, [this](int ok) {
-        switch (ok) {
-        case 0:
-            killTimer(tesretTimerId);
-            tesretTimerId = 0;
-            pbTest->setEnabled(false);
-            break;
-        case DialogConnection::T:
-            tesretTimerId = startTimer(TesretTimeout);
-            tesretSemaphore.acquire(tesretSemaphore.available());
-            break;
-        case DialogConnection::G:
-            pbTest->setEnabled(true);
-            break;
-        case DialogConnection::T | DialogConnection::G:
-            tesretTimerId = startTimer(TesretTimeout);
-            tesretSemaphore.acquire(tesretSemaphore.available());
-            pbTest->setEnabled(true);
-            break;
-        }
-    });
+    connect(Interface::grbl(), &GRBL::currentPos, this, &MainWindow::updatePos);
 
-    { // tableViewTester
-        modelMatrix = new MatrixModel;
-        tableViewTester->setModel(modelMatrix);
+    connect(Interface::tester(), &AmkTester::measureReady, this, &MainWindow::setData);
+    connect(this, &MainWindow::startTester, Interface::tester(), &AmkTester::measure);
+
+    connect(connection, &DialogConnection::connection, this, &MainWindow::connectionSlot);
+
+    // tableViewTester
+    modelMatrix = new MatrixModel;
+    tableViewTester->setModel(modelMatrix);
+    {
         auto header = tableViewTester->horizontalHeader();
         header->setSectionResizeMode(QHeaderView::Stretch);
         header = tableViewTester->verticalHeader();
         header->setSectionResizeMode(QHeaderView::Stretch);
-        connect(this, &MainWindow::startTester, Interface::tester(), &AmkTester::measure);
-        connect(Interface::tester(), &AmkTester::measureReady, this, &MainWindow::setData);
     }
-    { // tableViewButtons
-        modelButton = new ButtonModel;
-        tableViewButtons->setModel(modelButton);
 
+    // tableViewButtons
+    modelButton = new ButtonModel;
+    tableViewButtons->setModel(modelButton);
+    tableViewButtons->setItemDelegate(new Delegate(tableViewButtons));
+    {
         auto header = tableViewButtons->horizontalHeader();
         header->setSectionResizeMode(QHeaderView::Stretch);
         header = tableViewButtons->verticalHeader();
         header->setSectionResizeMode(QHeaderView::Fixed);
-        { //setItemDelegate
-            //            tableViewButtons->setItemDelegateForColumn(1, new Delegate(tableViewButtons));
-            tableViewButtons->setItemDelegate(new Delegate(tableViewButtons));
-        }
     }
+    connect(modelButton, &ButtonModel::dataChanged, [this](const QModelIndex& topLeft, const QModelIndex& bottomRight, const QVector<int>& roles) {
+        if (topLeft.column() < 2 && bottomRight.column() < 2 && roles.contains(Qt::EditRole))
+            setWindowModified(true);
+    });
 
-    { // menu
-        // Новый
-        auto action = menu->addAction(QIcon::fromTheme(""), "Новый", [this] { modelButton->newOrClose(); });
-        action->setShortcut(QKeySequence::New);
-        // Открыть
-        action = menu->addAction(QIcon::fromTheme(""), "Открыть", [this] {
-            modelButton->open(QFileDialog::getOpenFileName(this, "Open File", modelButton->fileName(), filter));
-        });
-        action->setShortcut(QKeySequence::Open);
-        // Сохранить
-        action = menu->addAction(QIcon::fromTheme(""), "Сохранить", [this] {
-            modelButton->fileName().isEmpty()
-                ? modelButton->save(QFileDialog::getSaveFileName(this, "Save File", "", filter))
-                : modelButton->save();
-        });
-        action->setShortcut(QKeySequence::Save);
-        // Сохранить как
-        action = menu->addAction(QIcon::fromTheme(""), "Сохранить как...", [this] {
-            modelButton->save(QFileDialog::getSaveFileName(this, "Save File As", modelButton->fileName(), filter));
-        });
-        action->setShortcut(QKeySequence::SaveAs);
-        // Закрыть
-        action = menu->addAction(QIcon::fromTheme(""), "Закрыть", [this] { modelButton->newOrClose(); });
-        action->setShortcut(QKeySequence::Close);
-        // Выход
-        action = menu->addAction(QIcon::fromTheme(""), "Выход", [this] { close(); });
-    }
+    // menu
+    createMenus();
 
     connect(dsbxX, qOverload<double>(&QDoubleSpinBox::valueChanged), [this](double x) {
         if (chbxMove->isChecked())
@@ -109,8 +70,6 @@ MainWindow::MainWindow(QWidget* parent)
         if (chbxMove->isChecked())
             Interface::grbl()->setButton({ dsbxX->value(), y });
     });
-
-    connect(Interface::grbl(), &GRBL::currentPos, this, &MainWindow::updatePos);
 
     readSettings();
     if (!connection->ping())
@@ -149,6 +108,7 @@ void MainWindow::readSettings()
     connection->cbxGrbl->setCurrentIndex(settings.value("cbxGrbl").toInt());
     hslPress->setValue(settings.value("hslPress").toInt());
     modelButton->open(settings.value("fileName").toString());
+    setWindowFilePath(QFileInfo(modelButton->fileName()).fileName());
 
     settings.endGroup();
 }
@@ -163,17 +123,99 @@ void MainWindow::setPos(double)
 {
 }
 
+void MainWindow::connectionSlot(int ok)
+{
+    switch (ok) {
+    case DialogConnection::T:
+        tesretTimerId = startTimer(TesterTimeout);
+        tesretSemaphore.acquire(tesretSemaphore.available());
+        break;
+    case DialogConnection::G:
+        pbTest->setEnabled(true);
+        break;
+    case DialogConnection::T | DialogConnection::G:
+        tesretTimerId = startTimer(TesterTimeout);
+        tesretSemaphore.acquire(tesretSemaphore.available());
+        pbTest->setEnabled(true);
+    default:
+        killTimer(tesretTimerId);
+        tesretTimerId = 0;
+        pbTest->setEnabled(false);
+        break;
+    }
+}
+
+void MainWindow::createMenus()
+{
+    // Новый
+    auto action = menu->addAction(QIcon::fromTheme(""), "Новый", [this] {
+        modelButton->newOrClose();
+        setWindowFilePath(QFileInfo(modelButton->fileName()).fileName());
+        setWindowModified(true);
+    });
+    action->setShortcut(QKeySequence::New);
+    // Открыть
+    action = menu->addAction(QIcon::fromTheme(""), "Открыть", [this] {
+        modelButton->open(QFileDialog::getOpenFileName(this, "Open File", modelButton->fileName(), filter));
+        setWindowFilePath(QFileInfo(modelButton->fileName()).fileName());
+        setWindowModified(false);
+    });
+    action->setShortcut(QKeySequence::Open);
+    // Сохранить
+    action = menu->addAction(QIcon::fromTheme(""), "Сохранить", [this] {
+        modelButton->fileName().isEmpty()
+            ? modelButton->save(QFileDialog::getSaveFileName(this, "Save File", "", filter))
+            : modelButton->save();
+        setWindowFilePath(QFileInfo(modelButton->fileName()).fileName());
+        setWindowModified(false);
+    });
+    action->setShortcut(QKeySequence::Save);
+    // Сохранить как
+    action = menu->addAction(QIcon::fromTheme(""), "Сохранить как...", [this] {
+        modelButton->save(QFileDialog::getSaveFileName(this, "Save File As", modelButton->fileName(), filter));
+        setWindowFilePath(QFileInfo(modelButton->fileName()).fileName());
+        setWindowModified(false);
+    });
+    action->setShortcut(QKeySequence::SaveAs);
+    // Закрыть
+    action = menu->addAction(QIcon::fromTheme(""), "Закрыть", [this] {
+        modelButton->newOrClose();
+        setWindowFilePath(QFileInfo(modelButton->fileName()).fileName());
+        setWindowModified(true);
+    });
+    action->setShortcut(QKeySequence::Close);
+    // Выход
+    action = menu->addAction(QIcon::fromTheme(""), "Выход", [this] { close(); });
+}
+
+void MainWindow::finish()
+{
+    setMode(false);
+    QMessageBox::information(this, "", "Проверка закончена.");
+}
+
+void MainWindow::selectRow(int row)
+{
+    tableViewButtons->selectionModel()->clearSelection();
+    tableViewButtons->selectRow(row);
+}
+
 void MainWindow::setMode(bool measure)
 {
     chbxMove->setChecked(false);
-    chbxMove->setEnabled(!measure);
-
-    pbAdd->setEnabled(!measure);
-    pbSub->setEnabled(!measure);
-    pbSetPos->setEnabled(!measure);
+    grbxButtons->setEnabled(!measure);
+    grbxRule->setEnabled(!measure);
 
     pbTest->setText(measure ? "Прервать тест" : "Начать тест");
     pbTest->setChecked(measure);
+
+    if (measure) {
+        killTimer(tesretTimerId);
+        tesretTimerId = 0;
+    } else {
+        tesretSemaphore.acquire(tesretSemaphore.available());
+        tesretTimerId = startTimer(TesterTimeout);
+    }
 }
 
 void MainWindow::setData(const Pins& value)
@@ -191,51 +233,65 @@ void MainWindow::on_pbTest_clicked(bool checked)
 {
     setMode(checked);
     if (checked) {
-        class TH {
-            // clang-format off
-            MainWindow* const mw;
-        public:
-            TH(MainWindow* mw) : mw(mw) {
-                mw->killTimer(mw->tesretTimerId);
-                mw->tesretTimerId = 0;
-            }
-            ~TH() {
-                mw->tesretSemaphore.acquire(mw->tesretSemaphore.available());
-                mw->tesretTimerId = mw->startTimer(TesretTimeout);
-            }
-            // clang-format on
-        } th(this);
+        worker = new Worker(modelButton);
+        connect(worker, &QThread::finished, &QObject::deleteLater);
+        connect(worker, &QThread::finished, this, &MainWindow::finish);
+        connect(worker, &Worker::currentRow, this, &MainWindow::selectRow);
 
-        Interface::grbl()->setPressure(hslPress->value() * 0.1);
-        int index = 0;
-        for (const auto& [button, pos, res] : modelButton->buttons()) {
-            tableViewButtons->selectionModel()->clearSelection();
-            tableViewButtons->selectRow(index);
-            if (!pbTest->isChecked()) {
-                Interface::grbl()->home();
-                return;
-            }
-            if (Interface::grbl()->setButton(pos)) {
-                do {
-                    Interface::grbl()->getPos();
-                    thread()->msleep(DelayMs);
-                    QApplication::processEvents();
-                } while (Interface::grbl()->isRunning());
-            } else {
-                qDebug("setButton!");
-                break;
-            }
-
-            Interface::tester()->measure();
-            QApplication::processEvents(QEventLoop::EventLoopExec, 1);
-
-            int val = modelMatrix->isOk();
-            modelButton->setResistance(index++, val);
-        }
-        Interface::grbl()->home();
-        setMode(false);
-        QMessageBox::information(this, "", "Проверка закончена.");
+        worker->start(QThread::NormalPriority);
+    } else {
+        worker->requestInterruption();
+        worker->quit();
+        worker->wait();
     }
+
+    //    setMode(checked);
+    //    if (checked) {
+    //        class TH {
+    //            // clang-format off
+    //            MainWindow* const mw;
+    //        public:
+    //            TH(MainWindow* mw) : mw(mw) {
+    //                killTimer(tesretTimerId);
+    //                tesretTimerId = 0;
+    //            }
+    //            ~TH() {
+    //                tesretSemaphore.acquire(tesretSemaphore.available());
+    //                tesretTimerId = startTimer(TesretTimeout);
+    //            }
+    //            // clang-format on
+    //        } th(this);
+
+    //        Interface::grbl()->setPressure(hslPress->value() * 0.1);
+    //        int index = 0;
+    //        for (const auto& [button, pos, res] : modelButton->buttons()) {
+    //            tableViewButtons->selectionModel()->clearSelection();
+    //            tableViewButtons->selectRow(index);
+    //            if (!pbTest->isChecked()) {
+    //                Interface::grbl()->home();
+    //                return;
+    //            }
+    //            if (Interface::grbl()->setButton(pos)) {
+    //                do {
+    //                    Interface::grbl()->getPos();
+    //                    thread()->msleep(DelayMs);
+    //                    QApplication::processEvents();
+    //                } while (Interface::grbl()->isRunning());
+    //            } else {
+    //                qDebug("setButton!");
+    //                break;
+    //            }
+
+    //            Interface::tester()->measure();
+    //            QApplication::processEvents(QEventLoop::EventLoopExec, 1);
+
+    //            int val = modelMatrix->isOk();
+    //            modelButton->setResistance(index++, val);
+    //        }
+    //        Interface::grbl()->home();
+    //        setMode(false);
+    //        QMessageBox::information(this, "", "Проверка закончена.");
+    //    }
 }
 
 void MainWindow::timerEvent(QTimerEvent* event)
@@ -255,6 +311,7 @@ void MainWindow::on_pbAdd_clicked()
         "Enter a name for the button.", QLineEdit::Normal,
         "Name", nullptr);
     modelButton->addButton(name, { dsbxX->value(), dsbxY->value() });
+    setWindowModified(true);
 }
 
 void MainWindow::on_pbSub_clicked()
@@ -266,6 +323,7 @@ void MainWindow::on_pbSub_clicked()
         auto answer = QMessageBox::question(this, "", "Remove Selected Rows?", QMessageBox::Yes, QMessageBox::No);
         if (answer == QMessageBox::Yes) {
             modelButton->removeButtons(mIdxList);
+            setWindowModified(true);
         }
     }
 }
@@ -291,6 +349,7 @@ void MainWindow::on_pbSetPos_clicked()
                     modelButton->setData(index, QPoint(dsbxX->value(), dsbxY->value()));
             }
             emit modelButton->dataChanged(index, index);
+            setWindowModified(true);
         }
     }
 }
@@ -301,4 +360,18 @@ void MainWindow::on_pbZero_clicked()
     chbxMove->setChecked(false);
     dsbxX->setValue(0);
     dsbxY->setValue(0);
+}
+
+void MainWindow::closeEvent(QCloseEvent* event)
+{
+    if (isWindowModified()) {
+        switch (QMessageBox::question(this, "", "", QMessageBox::Yes, QMessageBox::No, QMessageBox::Cancel)) {
+        case QMessageBox::Yes:
+            break;
+        case QMessageBox::No:
+            break;
+        case QMessageBox::Cancel:
+            break;
+        };
+    }
 }

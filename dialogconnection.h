@@ -21,6 +21,5 @@ public:
     };
 
 signals:
-    void
-    connection(int);
+    void connection(int);
 };

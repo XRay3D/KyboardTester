@@ -1,5 +1,6 @@
-#ifndef COMMON_INTERFACES_H
-#define COMMON_INTERFACES_H
+#pragma once
+
+#define EMU
 
 #include <QString>
 
@@ -12,4 +13,3 @@ protected:
     bool m_connected = false;
 };
 
-#endif // COMMON_INTERFACES_H

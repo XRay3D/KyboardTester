@@ -11,6 +11,13 @@ enum {
     Res
 };
 
+void Delegate::commitEditor()
+{
+    //    StarEditor* editor = qobject_cast<StarEditor*>(sender());
+    emit commitData(qobject_cast<QWidget*>(sender()));
+    //    emit closeEditor(editor);
+}
+
 Delegate::Delegate(QWidget* parent)
     : QItemDelegate(parent)
 {
@@ -24,12 +31,15 @@ QWidget* Delegate::createEditor(QWidget* parent, const QStyleOptionViewItem& opt
     case Name: {
         auto widget = new QLineEdit(parent);
         widget->setAlignment(Qt::AlignCenter);
+        connect(widget, &QLineEdit::textChanged, this, &Delegate::commitEditor);
         return widget;
     }
     case Pos: {
         auto widget = new Widget(parent);
         widget->dsbX->setMinimumHeight(option.rect.height());
         widget->dsbY->setMinimumHeight(option.rect.height());
+        connect(widget->dsbX, qOverload<double>(&QDoubleSpinBox::valueChanged), this, &Delegate::commitEditor);
+        connect(widget->dsbY, qOverload<double>(&QDoubleSpinBox::valueChanged), this, &Delegate::commitEditor);
         return widget;
     }
     default: {
@@ -37,6 +47,7 @@ QWidget* Delegate::createEditor(QWidget* parent, const QStyleOptionViewItem& opt
         widget->setRange(0, 1000000);
         widget->setButtonSymbols(QAbstractSpinBox::NoButtons);
         widget->setAlignment(Qt::AlignCenter);
+        connect(widget, qOverload<int>(&QSpinBox::valueChanged), this, &Delegate::commitEditor);
         return widget;
     }
     }
@@ -48,7 +59,7 @@ void Delegate::setEditorData(QWidget* editor, const QModelIndex& index) const
         QPointF pt { index.data(Qt::EditRole).toPointF() };
         auto widget = static_cast<Widget*>(editor);
         widget->dsbX->setValue(pt.x());
-        widget->dsbY->setValue(pt.x());
+        widget->dsbY->setValue(pt.y());
     } else {
         QItemDelegate::setEditorData(editor, index);
     }
@@ -86,12 +97,14 @@ void Widget::setupUi(QWidget* Form)
     dsbX->setAlignment(Qt::AlignCenter);
     dsbX->setButtonSymbols(QAbstractSpinBox::NoButtons);
     dsbX->setDecimals(3);
+    dsbX->setRange(-1000, 1000);
 
     dsbY = new QDoubleSpinBox(Form);
     dsbY->setObjectName(QString::fromUtf8("dsbY"));
     dsbY->setAlignment(Qt::AlignCenter);
     dsbY->setButtonSymbols(QAbstractSpinBox::NoButtons);
     dsbY->setDecimals(3);
+    dsbY->setRange(-1000, 1000);
 
     horizontalLayout = new QHBoxLayout(Form);
     horizontalLayout->setSpacing(0);

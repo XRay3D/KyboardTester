@@ -98,6 +98,24 @@ bool AmkTester::measure()
     return m_result;
 }
 
+int AmkTester::resistance()
+{
+    QVector<int> res;
+    res.reserve(11 * 11);
+    for (int r = 0; r < 11; ++r) {
+        for (int c = 0; c < 11; ++c) {
+            if (m_pins[r][c] > 0)
+                res << m_pins[r][c];
+        }
+    }
+    std::ranges::sort(res);
+    return res.size() == 2
+        ? res.first()
+        : (res.size() > 2
+                ? -1
+                : 0);
+}
+
 //bool AmkTester::getCalibrationCoefficients(float& /*GradCoeff*/, int /*pin*/)
 //{
 //    QMutexLocker locker(&m_mutex);

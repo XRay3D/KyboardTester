@@ -1,12 +1,14 @@
 #ifndef MAINWINDOW_H
 #define MAINWINDOW_H
 
+#include "mainwindow.h"
 #include "ui_mainwindow.h"
 #include <QSemaphore>
 
 class ButtonModel;
 class DialogConnection;
 class MatrixModel;
+class Worker;
 struct Pins;
 
 class MainWindow : public QMainWindow, public Ui::MainWindow {
@@ -34,6 +36,11 @@ private:
     void readSettings();
     void updatePos(const QPointF& pt);
     void setPos(double);
+    void connectionSlot(int ok);
+    void createMenus();
+
+    void finish();
+    void selectRow(int);
 
     void setMode(bool measure);
     void setData(const Pins& value);
@@ -42,13 +49,16 @@ private:
     ButtonModel* modelButton;
     MatrixModel* modelMatrix;
     DialogConnection* connection;
-
+    Worker* worker = nullptr;
     int tesretTimerId = 0;
     QSemaphore tesretSemaphore;
 
     // QObject interface
 protected:
     void timerEvent(QTimerEvent* event) override;
+    void closeEvent(QCloseEvent* event) override;
 };
+
+
 
 #endif // MAINWINDOW_H
