@@ -9,7 +9,11 @@ int main(int argc, char* argv[])
 
     a.setOrganizationName("XrSoft");
     a.setApplicationName("KyboardTester");
-
+    {
+        QFont f;
+        f.setPointSize(12);
+        a.setFont(f);
+    }
     Interface i;
     Q_UNUSED(i)
 
