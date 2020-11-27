@@ -6,6 +6,7 @@
 #include "matrixmodel.h"
 #include "worker.h"
 
+#include <QCloseEvent>
 #include <QDebug>
 #include <QFileDialog>
 #include <QInputDialog>
@@ -156,7 +157,7 @@ void MainWindow::createMenus()
     action->setShortcut(QKeySequence::New);
     // Открыть
     action = menu->addAction(QIcon::fromTheme(""), "Открыть", [this] {
-        modelButton->open(QFileDialog::getOpenFileName(this, "Open File", modelButton->fileName(), filter));
+        modelButton->open(QFileDialog::getOpenFileName(this, "Открыть файл", modelButton->fileName(), filter));
         setWindowFilePath(QFileInfo(modelButton->fileName()).fileName());
         setWindowModified(false);
     });
@@ -164,7 +165,7 @@ void MainWindow::createMenus()
     // Сохранить
     action = menu->addAction(QIcon::fromTheme(""), "Сохранить", [this] {
         modelButton->fileName().isEmpty()
-            ? modelButton->save(QFileDialog::getSaveFileName(this, "Save File", "", filter))
+            ? modelButton->save(QFileDialog::getSaveFileName(this, "Сохранить файл как...", "", filter))
             : modelButton->save();
         setWindowFilePath(QFileInfo(modelButton->fileName()).fileName());
         setWindowModified(false);
@@ -172,7 +173,7 @@ void MainWindow::createMenus()
     action->setShortcut(QKeySequence::Save);
     // Сохранить как
     action = menu->addAction(QIcon::fromTheme(""), "Сохранить как...", [this] {
-        modelButton->save(QFileDialog::getSaveFileName(this, "Save File As", modelButton->fileName(), filter));
+        modelButton->save(QFileDialog::getSaveFileName(this, "Сохранить файл как...", modelButton->fileName(), filter));
         setWindowFilePath(QFileInfo(modelButton->fileName()).fileName());
         setWindowModified(false);
     });
@@ -184,6 +185,8 @@ void MainWindow::createMenus()
         setWindowModified(true);
     });
     action->setShortcut(QKeySequence::Close);
+
+    menu->addSeparator();
     // Выход
     action = menu->addAction(QIcon::fromTheme(""), "Выход", [this] { close(); });
 }
@@ -308,8 +311,8 @@ void MainWindow::on_pbAdd_clicked()
 {
     QString name = QInputDialog::getText(this,
         "",
-        "Enter a name for the button.", QLineEdit::Normal,
-        "Name", nullptr);
+        "Введите название кнопки.", QLineEdit::Normal,
+        "Название", nullptr);
     modelButton->addButton(name, { dsbxX->value(), dsbxY->value() });
     setWindowModified(true);
 }
@@ -320,7 +323,7 @@ void MainWindow::on_pbSub_clicked()
     if (mIdxList.size()) {
         //std::ranges::sort(mIdxList, [](const QModelIndex& r, const QModelIndex& l) { return r.row() > l.row(); });
         std::sort(mIdxList.begin(), mIdxList.end(), [](const QModelIndex& r, const QModelIndex& l) { return r.row() > l.row(); });
-        auto answer = QMessageBox::question(this, "", "Remove Selected Rows?", QMessageBox::Yes, QMessageBox::No);
+        auto answer = QMessageBox::question(this, "", "Удалить выбранные кнопки?", QMessageBox::Yes, QMessageBox::No);
         if (answer == QMessageBox::Yes) {
             modelButton->removeButtons(mIdxList);
             setWindowModified(true);
@@ -365,12 +368,18 @@ void MainWindow::on_pbZero_clicked()
 void MainWindow::closeEvent(QCloseEvent* event)
 {
     if (isWindowModified()) {
-        switch (QMessageBox::question(this, "", "", QMessageBox::Yes, QMessageBox::No, QMessageBox::Cancel)) {
+        switch (QMessageBox::question(this, "", "", QMessageBox::Save, QMessageBox::Discard, QMessageBox::Cancel)) {
         case QMessageBox::Yes:
+            modelButton->fileName().isEmpty()
+                ? modelButton->save(QFileDialog::getSaveFileName(this, "Сохранить файл как...", "", filter))
+                : modelButton->save();
+            event->accept();
             break;
         case QMessageBox::No:
+            event->accept();
             break;
         case QMessageBox::Cancel:
+            event->ignore();
             break;
         };
     }

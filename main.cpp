@@ -11,7 +11,7 @@ int main(int argc, char* argv[])
     a.setApplicationName("KyboardTester");
     {
         QFont f;
-        f.setPointSize(12);
+        f.setPointSize(10);
         a.setFont(f);
     }
     Interface i;

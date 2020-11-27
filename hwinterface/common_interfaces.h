@@ -1,6 +1,6 @@
 #pragma once
 
-#define EMU
+//#define EMU
 
 #include <QString>
 
